@@ -9,14 +9,15 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "prisma generate && tsc",
+    "build": "prisma generate && tsc && tsc -p tsconfig.scripts.json",
     "start": "node dist/server.js",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.scripts.json --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "create-admin": "tsx scripts/create-admin.ts"
+    "create-admin": "node dist/scripts/create-admin.js",
+    "create-admin:dev": "tsx scripts/create-admin.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^10.0.1",
