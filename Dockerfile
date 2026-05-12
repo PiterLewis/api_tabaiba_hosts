@@ -11,7 +11,9 @@ RUN apk add --no-cache openssl
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
 
-RUN npm ci
+# --include=dev fuerza la instalacion de devDependencies aunque
+# NODE_ENV=production llegue inyectado por el orquestador (Coolify).
+RUN npm ci --include=dev
 
 # ============================================================
 # Stage 2: build — compila TypeScript y genera cliente Prisma
