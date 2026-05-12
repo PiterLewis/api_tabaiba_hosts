@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Admin — usuarios con acceso a la API.
+// Whitelist por email se controla en ADMIN_EMAILS, los hashes viven aquí.
+// Se crean con `npm run create-admin <email> <password>`.
+// ============================================================
+model Admin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ============================================================
+// Propietario — dueño de uno o varios pisos.
+// ============================================================
+model Propietario {
+  id        String            @id @default(cuid())
+  nombre    String
+  telefono  String
+  email     String?
+  notas     String?
+  estado    EstadoPropietario @default(ACTIVO)
+  fechaAlta DateTime          @default(now())
+  pisos     Piso[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+}
+
+enum EstadoPropietario {
+  ACTIVO
+  BAJA
+}
+
+// ============================================================
+// Piso — vivienda gestionada.
+// ============================================================
+model Piso {
+  id                   String     @id @default(cuid())
+  propietarioId        String
+  nombreInterno        String
+  direccion            String
+  zona                 String
+  numDormitorios       Int
+  numHuespedesMax      Int
+  airbnbListingUrl     String?
+  airbnbIcalUrl        String?
+  bookingIcalUrl       String?
+  instruccionesCheckIn String?
+  wifiNombre           String?
+  wifiPassword         String?
+  codigoLockbox        String?
+  comisionPorcentaje   Float      @default(20)
+  fechaInicioGestion   DateTime
+  estado               EstadoPiso @default(ACTIVO)
+
+  propietario Propietario @relation(fields: [propietarioId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([propietarioId])
+  @@index([estado])
+}
+
+enum EstadoPiso {
+  ACTIVO
+  PAUSADO
+  BAJA
+}
