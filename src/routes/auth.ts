@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import bcrypt from 'bcrypt';
 import { z } from 'zod';
 import { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -16,11 +16,12 @@ const REFRESH_COOKIE = 'tabaiba_refresh';
 // Hash dummy con cost 12 para igualar tiempos cuando el admin no existe (anti-timing).
 const DUMMY_BCRYPT_HASH = '$2b$12$abcdefghijklmnopqrstuuYZbqkXJK0z3l8Y8hqkXJK0z3l8Y8hqkX';
 
-function refreshCookieOptions() {
-  const isProd = env.NODE_ENV === 'production';
+// `secure` se decide por el protocolo real de la petición (X-Forwarded-Proto via trustProxy).
+// Asi la cookie es Secure cuando hay TLS y no-Secure cuando no, sin hardcodear NODE_ENV.
+function refreshCookieOptions(request: FastifyRequest) {
   return {
     httpOnly: true,
-    secure: isProd,
+    secure: request.protocol === 'https',
     sameSite: 'lax' as const,
     path: '/auth',
     maxAge: 60 * 60 * 24 * 30,
@@ -64,7 +65,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       const accessToken = await reply.jwtSign(payload);
       const refreshToken = signRefreshToken(payload);
 
-      reply.setCookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions());
+      reply.setCookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions(request));
 
       return {
         accessToken,
@@ -100,7 +101,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       const accessToken = await reply.jwtSign(newPayload);
       const refreshToken = signRefreshToken(newPayload);
 
-      reply.setCookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions());
+      reply.setCookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions(request));
 
       return {
         accessToken,
