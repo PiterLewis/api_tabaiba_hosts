@@ -25,11 +25,13 @@ RUN apk add --no-cache openssl
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/prisma ./prisma
-COPY package.json tsconfig.json ./
+COPY package.json tsconfig.json tsconfig.scripts.json ./
 COPY src ./src
+COPY scripts ./scripts
 
 RUN npx prisma generate
 RUN npx tsc
+RUN npx tsc -p tsconfig.scripts.json
 
 # ============================================================
 # Stage 3: runtime — solo dist + prod deps + cliente Prisma
