@@ -33,6 +33,13 @@ export const propietarioListQuerySchema = z.object({
   q: z.string().min(1).max(200).optional(),
 });
 
+// Resumen del propietario para anidar dentro de otros recursos (p.ej. /pisos).
+export const propietarioSummarySchema = z.object({
+  id: z.string(),
+  nombre: z.string(),
+  telefono: z.string(),
+});
+
 export type PropietarioCreate = z.infer<typeof propietarioCreateSchema>;
 export type PropietarioUpdate = z.infer<typeof propietarioUpdateSchema>;
 export type PropietarioResponse = z.infer<typeof propietarioResponseSchema>;

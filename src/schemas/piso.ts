@@ -56,6 +56,14 @@ export const pisoListQuerySchema = z.object({
   q: z.string().min(1).max(200).optional(),
 });
 
+// Resumen del piso para anidar dentro de /propietarios.
+export const pisoSummarySchema = z.object({
+  id: z.string(),
+  nombreInterno: z.string(),
+  zona: z.string(),
+  estado: estadoPisoSchema,
+});
+
 export type PisoCreate = z.infer<typeof pisoCreateSchema>;
 export type PisoUpdate = z.infer<typeof pisoUpdateSchema>;
 export type PisoResponse = z.infer<typeof pisoResponseSchema>;

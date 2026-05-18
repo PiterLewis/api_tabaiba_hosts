@@ -11,11 +11,28 @@ import {
   propietarioIdParamsSchema,
   propietarioListQuerySchema,
 } from '../schemas/propietario.js';
+import { pisoSummarySchema, pisoResponseSchema } from '../schemas/piso.js';
+
+// Lista: propietario + pisos resumidos. Suficiente para tablas con "# Pisos" o expand.
+const propietarioListItemSchema = propietarioResponseSchema.extend({
+  pisos: z.array(pisoSummarySchema),
+});
+
+// Detail: propietario + pisos completos.
+const propietarioDetailSchema = propietarioResponseSchema.extend({
+  pisos: z.array(pisoResponseSchema),
+});
+
+const PISO_SUMMARY_SELECT = {
+  id: true,
+  nombreInterno: true,
+  zona: true,
+  estado: true,
+} as const satisfies Prisma.PisoSelect;
 
 export const propietariosRoutes: FastifyPluginAsync = async (app) => {
   const typedApp = app.withTypeProvider<ZodTypeProvider>();
 
-  // Todas las rutas requieren auth.
   typedApp.addHook('onRequest', app.verifyAuth);
 
   typedApp.get(
@@ -23,9 +40,9 @@ export const propietariosRoutes: FastifyPluginAsync = async (app) => {
     {
       schema: {
         tags: ['propietarios'],
-        summary: 'Lista propietarios con filtros opcionales',
+        summary: 'Lista propietarios con pisos resumidos',
         querystring: propietarioListQuerySchema,
-        response: { 200: z.array(propietarioResponseSchema) },
+        response: { 200: z.array(propietarioListItemSchema) },
       },
     },
     async (request) => {
@@ -43,9 +60,15 @@ export const propietariosRoutes: FastifyPluginAsync = async (app) => {
 
       const propietarios = await prisma.propietario.findMany({
         where,
+        include: {
+          pisos: {
+            select: PISO_SUMMARY_SELECT,
+            orderBy: { nombreInterno: 'asc' },
+          },
+        },
         orderBy: { nombre: 'asc' },
       });
-      return propietarios.map(serialize);
+      return propietarios.map(serializeListItem);
     },
   );
 
@@ -54,16 +77,19 @@ export const propietariosRoutes: FastifyPluginAsync = async (app) => {
     {
       schema: {
         tags: ['propietarios'],
-        summary: 'Detalle de un propietario',
+        summary: 'Detalle de un propietario con sus pisos completos',
         params: propietarioIdParamsSchema,
-        response: { 200: propietarioResponseSchema },
+        response: { 200: propietarioDetailSchema },
       },
     },
     async (request) => {
       const { id } = request.params;
-      const propietario = await prisma.propietario.findUnique({ where: { id } });
+      const propietario = await prisma.propietario.findUnique({
+        where: { id },
+        include: { pisos: { orderBy: { nombreInterno: 'asc' } } },
+      });
       if (propietario === null) throw new NotFoundError(`Propietario ${id} no encontrado`);
-      return serialize(propietario);
+      return serializeDetail(propietario);
     },
   );
 
@@ -74,7 +100,7 @@ export const propietariosRoutes: FastifyPluginAsync = async (app) => {
         tags: ['propietarios'],
         summary: 'Crea un propietario',
         body: propietarioCreateSchema,
-        response: { 201: propietarioResponseSchema },
+        response: { 201: propietarioDetailSchema },
       },
     },
     async (request, reply) => {
@@ -84,8 +110,11 @@ export const propietariosRoutes: FastifyPluginAsync = async (app) => {
         ...(estado !== undefined ? { estado } : {}),
       };
       try {
-        const propietario = await prisma.propietario.create({ data });
-        return reply.code(201).send(serialize(propietario));
+        const propietario = await prisma.propietario.create({
+          data,
+          include: { pisos: true },
+        });
+        return reply.code(201).send(serializeDetail(propietario));
       } catch (err) {
         if (isPrismaUnique(err)) throw new ConflictError('Ya existe un propietario con esos datos únicos');
         throw err;
@@ -101,15 +130,19 @@ export const propietariosRoutes: FastifyPluginAsync = async (app) => {
         summary: 'Actualiza un propietario',
         params: propietarioIdParamsSchema,
         body: propietarioUpdateSchema,
-        response: { 200: propietarioResponseSchema },
+        response: { 200: propietarioDetailSchema },
       },
     },
     async (request) => {
       const { id } = request.params;
       const data = request.body;
       try {
-        const propietario = await prisma.propietario.update({ where: { id }, data });
-        return serialize(propietario);
+        const propietario = await prisma.propietario.update({
+          where: { id },
+          data,
+          include: { pisos: { orderBy: { nombreInterno: 'asc' } } },
+        });
+        return serializeDetail(propietario);
       } catch (err) {
         if (isPrismaNotFound(err)) throw new NotFoundError(`Propietario ${id} no encontrado`);
         throw err;
@@ -143,9 +176,9 @@ export const propietariosRoutes: FastifyPluginAsync = async (app) => {
   );
 };
 
-type PropietarioRow = Awaited<ReturnType<typeof prisma.propietario.findUniqueOrThrow>>;
+type PropietarioBaseRow = Awaited<ReturnType<typeof prisma.propietario.findUniqueOrThrow>>;
 
-function serialize(p: PropietarioRow) {
+function serializeBase(p: PropietarioBaseRow) {
   return {
     id: p.id,
     nombre: p.nombre,
@@ -156,6 +189,57 @@ function serialize(p: PropietarioRow) {
     fechaAlta: p.fechaAlta.toISOString(),
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
+  };
+}
+
+type PisoSummaryRow = { id: string; nombreInterno: string; zona: string; estado: 'ACTIVO' | 'PAUSADO' | 'BAJA' };
+
+function serializeListItem(
+  p: PropietarioBaseRow & { pisos: PisoSummaryRow[] },
+) {
+  return {
+    ...serializeBase(p),
+    pisos: p.pisos.map((piso) => ({
+      id: piso.id,
+      nombreInterno: piso.nombreInterno,
+      zona: piso.zona,
+      estado: piso.estado,
+    })),
+  };
+}
+
+type PisoFullRow = Awaited<ReturnType<typeof prisma.piso.findUniqueOrThrow>>;
+
+function serializeDetail(
+  p: PropietarioBaseRow & { pisos: PisoFullRow[] },
+) {
+  return {
+    ...serializeBase(p),
+    pisos: p.pisos.map(serializePisoFull),
+  };
+}
+
+function serializePisoFull(piso: PisoFullRow) {
+  return {
+    id: piso.id,
+    propietarioId: piso.propietarioId,
+    nombreInterno: piso.nombreInterno,
+    direccion: piso.direccion,
+    zona: piso.zona,
+    numDormitorios: piso.numDormitorios,
+    numHuespedesMax: piso.numHuespedesMax,
+    airbnbListingUrl: piso.airbnbListingUrl,
+    airbnbIcalUrl: piso.airbnbIcalUrl,
+    bookingIcalUrl: piso.bookingIcalUrl,
+    instruccionesCheckIn: piso.instruccionesCheckIn,
+    wifiNombre: piso.wifiNombre,
+    wifiPassword: piso.wifiPassword,
+    codigoLockbox: piso.codigoLockbox,
+    comisionPorcentaje: piso.comisionPorcentaje,
+    fechaInicioGestion: piso.fechaInicioGestion.toISOString(),
+    estado: piso.estado,
+    createdAt: piso.createdAt.toISOString(),
+    updatedAt: piso.updatedAt.toISOString(),
   };
 }
 
